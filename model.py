@@ -23,6 +23,9 @@ class PortfolioModelPulp(DataProcessor):
         self.CA_expr=None
         self.CMO_expr=None
         self.CV_expr=None
+        self.obj=None       
+        self.list_obj = None
+
 
     def optimize_portfolio(self):
   
@@ -97,7 +100,7 @@ class PortfolioModelPulp(DataProcessor):
                     for i in range(self.num_serre))
 
             m += (CA_expr - CV_expr - CMO_expr)
-
+            m.writeMPS("model.mps")
             m.solve()
             CA_expr=value(CA_expr)[0][0]+value(CMO_expr)+ value(CV_expr)
             CMO_expr=value(CMO_expr)
@@ -106,6 +109,7 @@ class PortfolioModelPulp(DataProcessor):
             self.CMO_expr=CMO_expr
             self.CV_expr=CV_expr
             obj=CA_expr - CV_expr - CMO_expr
+            self.obj=obj
             print("Value of CA_expr:",CA_expr )
             print("Value of CMO_expr:", CMO_expr)
             print("Value of CV_expr:", CV_expr)
@@ -127,8 +131,122 @@ class PortfolioModelPulp(DataProcessor):
         except Exception as e:
             print(e)
 
-            
+    
+    
+    def get_top_k(self, n):
+    # Initialize an empty LP problem
+        try:
+            m = LpProblem("portfolio", LpMaximize)
+            choices = LpVariable.dicts("choice", [(i, j, t) for i in range(self.num_serre)
+                                          for j in self.scenarios
+                                          for t in self.month_to_week_indices[self.scenario_mois_dict[j]]], 
+                               cat=LpBinary)
 
+            for i in range(self.num_serre):
+                m += lpSum(choices[(i, j, t)] for j in self.scenarios
+                   for t in self.month_to_week_indices[self.scenario_mois_dict[j]]) == 1
+
+            for i in range(self.num_sect):
+                ref = self.secteur_serre_dict[i + 1][0]
+                for j in self.secteur_serre_dict[i + 1]:
+                    for k in self.scenarios:
+                        for t in self.month_to_week_indices[self.scenario_mois_dict[k]]:
+                            m += choices[(j - 1, k, t)] == choices[(ref - 1, k, t)]
+
+            for i in range(21):
+                for t in self.month_to_week_indices[self.scenario_mois_dict[5]]:
+                    m += choices[(i, 5, t)] == 0
+                for t in self.month_to_week_indices[self.scenario_mois_dict[4]]:
+                    m += choices[(i, 4, t)] == 0
+
+            for i in range(self.num_serre):
+                if i != 19 and i != 20:
+                    for j in self.variety_scenario_dict["Clara"]:
+                        for t in self.month_to_week_indices[self.scenario_mois_dict[j]]:
+                            m += choices[(i, j, t)] == 0
+                    for j in self.variety_scenario_dict["LAURITA"]:
+                        for t in self.month_to_week_indices[self.scenario_mois_dict[j]]:
+                            m += choices[(i, j, t)] == 0
+                else:
+                    if self.serre_sau_dict[i + 1] > 2.87:
+                        for j in self.variety_scenario_dict["Clara"]:
+                            for t in self.month_to_week_indices[self.scenario_mois_dict[j]]:
+                                m += choices[(i, j, t)] == 0
+                        for j in self.variety_scenario_dict["LAURITA"]:
+                            for t in self.month_to_week_indices[self.scenario_mois_dict[j]]:
+                                m += choices[(i, j, t)] == 0
+
+            for s in range(1, 91):
+                scenarios_time_dict = {}
+                for j in self.scenarios:
+                    scenarios_time_dict[j] = []
+                    if j in [4, 5, 20]:
+                        for t in self.month_to_week_indices[self.scenario_mois_dict[j]]:
+                            if t + self.scenario_delai_dict[j] < s and s < t + self.scenario_delai_dict[j] + 38:
+                                scenarios_time_dict[j].append(t)
+                    else:
+                        for t in self.month_to_week_indices[self.scenario_mois_dict[j]]:
+                            if t + self.scenario_delai_dict[j] < s and s < t + self.scenario_delai_dict[j] + self.scenario_duree_dict[j] + 1:
+                                scenarios_time_dict[j].append(t)
+                m += lpSum(choices[(i, k, t)] * (self.serre_sau_dict[i + 1] / self.scenario_vitesse[k]) *
+                   self.prod_mat[self.scenarios.index(k), s - t - self.scenario_delai_dict[k] - 1]
+                   for k in self.scenarios for t in scenarios_time_dict[k] if scenarios_time_dict[k] != []
+                   for i in range(self.num_serre)) <= 7 * 600
+
+            CA_expr = lpSum(choices[(i, j, t)] * self.prod[(i, j, t)]
+                    for i in range(self.num_serre) for j in self.scenarios
+                    for t in self.month_to_week_indices[self.scenario_mois_dict[j]])
+
+            CMO_expr = lpSum(choices[(i, j, t)] * self.scenario_prod[j] * self.serre_sau_dict[i + 1] * self.scenario_cmo[j]
+                     for j in self.scenarios for t in self.month_to_week_indices[self.scenario_mois_dict[j]]
+                     for i in range(self.num_serre))
+
+            CV_expr = lpSum(choices[(i, j, t)] * self.serre_sau_dict[i + 1] * self.scenario_cv[j]
+                    for j in self.scenarios for t in self.month_to_week_indices[self.scenario_mois_dict[j]]
+                    for i in range(self.num_serre))
+
+            m += (CA_expr - CV_expr - CMO_expr)
+
+    # Add the objective function to maximize CA_expr - CV_expr - CMO_expr
+        # m += (CA_expr - CV_expr - CMO_expr)
+            model=m
+    # Optimize the model initially and store the objective value
+            model.solve()
+        
+            CMO = value(sum(CMO_expr))
+            CV = value(sum(CV_expr))
+            CA = value(sum(CA_expr))+CMO+CV
+            obj = CA - CV - CMO
+            list_obj = [obj]
+
+        # Move constraint addition outside the loop
+            constraint = lpSum([CA_expr,-1*CMO_expr,-1*CV_expr]) <= list_obj[-1] - 0.00001
+
+            for _ in range(n):
+                model += constraint
+                model.solve()
+                CMO = value(sum(CMO_expr))
+                CV = value(sum(CV_expr))
+                CA = value(sum(CA_expr))+CMO+CV
+                
+                obj = CA - CV - CMO
+
+                print("Objective value:", obj)
+
+                list_obj.append(obj)
+
+            self.list_obj = list_obj
+
+        except Exception as e:
+            print(e)
+    
+    # Print out the keys present in the choices dictionary
+        
+    
+    # Loop for 'n' iterations
+        
+        
+        
 
 class PortfolioModelGurobi(DataProcessor):
     def __init__(self, data_processor):
@@ -216,6 +334,7 @@ class PortfolioModelGurobi(DataProcessor):
 
             m.update()
             m.setObjective((CA_expr - CV_expr - CMO_expr), GRB.MAXIMIZE)
+            m.write('model.lp')
             m.optimize()
             self.CA_expr=CA_expr.getValue()
             self.CMO_expr=CMO_expr.getValue()
@@ -236,8 +355,7 @@ class PortfolioModelGurobi(DataProcessor):
                 semaines_chosen.append(int(i.split("_")[3]))
             self.semaines_chosen=semaines_chosen
             self.scenario_chosen=scenario_chosen
-            self.m=m
-            self.choices=choices
+            
             
 
 # Initialize a table to store chosen variable names
@@ -247,128 +365,39 @@ class PortfolioModelGurobi(DataProcessor):
         except AttributeError:
             print("Encountered an attribute error")
     
-    def get_top_k(self,n):
-        try:
-            m = gp.Model("portfolio")
-            choices = {}
-            for i in range(self.num_serre):
-                for j in self.scenarios:
-                    for t in self.month_to_week_indices[self.scenario_mois_dict[j]]:
-                        choices[(i, j, t)] = m.addVar(vtype=GRB.BINARY, name=f'choice_{i}_{j}_{t}')
-
-            for i in range(self.num_serre):
-                m.addConstr(gp.quicksum(choices[(i, j, t)] for j in self.scenarios 
-                                        for t in self.month_to_week_indices[self.scenario_mois_dict[j]]) == 1, f"constraint_{i}")
-
-            for i in range(self.num_sect):
-                ref = self.secteur_serre_dict[i+1][0]
-                for j in self.secteur_serre_dict[i+1]:
-                    for k in self.scenarios:
-                        for t in self.month_to_week_indices[self.scenario_mois_dict[k]]:
-                            m.addConstr(choices[(j-1,k,t)] == choices[(ref-1,k,t)], f'c_0_{j}_{k}_{t}')
-
-            for i in range(21):
-                for t in self.month_to_week_indices[self.scenario_mois_dict[5]]:
-                    m.addConstr(choices[(i,5,t)] == 0)
-                for t in self.month_to_week_indices[self.scenario_mois_dict[4]]:
-                    m.addConstr(choices[(i,4,t)] == 0)
-
-            for i in range(self.num_serre):
-                if i!=19 and i!=20:
-                    for j in self.variety_scenario_dict["Clara"]:
-                        for t in self.month_to_week_indices[self.scenario_mois_dict[j]]:
-                            m.addConstr(choices[(i,j,t)] == 0)
-                    for j in self.variety_scenario_dict["LAURITA"]:
-                        for t in self.month_to_week_indices[self.scenario_mois_dict[j]]:
-                            m.addConstr(choices[(i,j,t)] == 0)
-                else:
-                    if self.serre_sau_dict[i+1] > 2.87:
-                        for j in self.variety_scenario_dict["Clara"]:
-                            for t in self.month_to_week_indices[self.scenario_mois_dict[j]]:
-                                m.addConstr(choices[(i,j,t)] == 0)
-                        for j in self.variety_scenario_dict["LAURITA"]:
-                            for t in self.month_to_week_indices[self.scenario_mois_dict[j]]:
-                                m.addConstr(choices[(i,j,t)] == 0)
-
-            for s in range(1, 91):
-                scenarios_time_dict = {}
-                for j in self.scenarios:
-                    scenarios_time_dict[j] = []
-                    if j in [4, 5, 20]:
-                        for t in self.month_to_week_indices[self.scenario_mois_dict[j]]:
-                            if t + self.scenario_delai_dict[j] < s and s < t + self.scenario_delai_dict[j] + 38:
-                                scenarios_time_dict[j].append(t)
-                    else:
-                        for t in self.month_to_week_indices[self.scenario_mois_dict[j]]:
-                            if t + self.scenario_delai_dict[j] < s and s < t + self.scenario_delai_dict[j] + self.scenario_duree_dict[j] + 1:
-                                scenarios_time_dict[j].append(t)
-                m.addConstr(gp.quicksum(choices[(i,k,t)]*(self.serre_sau_dict[i+1]/self.scenario_vitesse[k]) *
-                                         self.prod_mat[self.scenarios.index(k),s-t-self.scenario_delai_dict[k]-1]
-                                         for k in self.scenarios for t in scenarios_time_dict[k] if scenarios_time_dict[k]!=[]
-                                         for i in range(self.num_serre)) <= 7*600, f'mo_{s}')
-
-            CA_expr = gp.quicksum(choices[(i,j,t)] * self.prod[(i, j, t)] 
-                                  for i in range(self.num_serre) for j in self.scenarios 
-                                  for t in self.month_to_week_indices[self.scenario_mois_dict[j]])
-
-            CMO_expr = gp.quicksum(choices[(i,j,t)] * self.scenario_prod[j] * self.serre_sau_dict[i+1] * self.scenario_cmo[j] 
-                                   for j in self.scenarios for t in self.month_to_week_indices[self.scenario_mois_dict[j]]
-                                   for i in range(self.num_serre))
-
-            CV_expr = gp.quicksum(choices[(i,j,t)] * self.serre_sau_dict[i+1] * self.scenario_cv[j] 
-                                  for j in self.scenarios for t in self.month_to_week_indices[self.scenario_mois_dict[j]]
-                                  for i in range(self.num_serre))
-
+    def get_top_k(self, n):
+    # Initialize a list to store objective values
+        
+    
+    # Read the MPS file and initialize the model
+        m = gp.read('model.lp')
+        choices = {v.varName: v for v in m.getVars()}
+        m.optimize()
+        list_obj = [m.ObjVal]
+    # Print out the keys present in the choices dictionary
+        print("Keys in choices dictionary:")
+        for key in choices:
+            print(key)
+    
+    # Loop for 'n' iterations
+        chosen_variables_table = []
+        for _ in range(n):
+        # Optimize the model
+            
+        
+        # Retrieve and store chosen variable names
+            chosen_variables = [var_name for var_name, var in choices.items() if var.x == 1]
+            chosen_variables_table.append(chosen_variables)
+        
+        # Add constraints to avoid repeating selections
+            m.addConstr(gp.quicksum(choices[var_name] for var_name in chosen_variables) <= self.num_serre - 1)
+        
+        # Update and re-optimize the model with added constraints
             m.update()
-            m.setObjective((CA_expr - CV_expr - CMO_expr), GRB.MAXIMIZE)
             m.optimize()
-            self.CA_expr=CA_expr.getValue()
-            self.CMO_expr=CMO_expr.getValue()
-            self.CV_expr=CV_expr.getValue()
-
-            print("Value of CA_expr:", CA_expr.getValue())
-            print("Value of CMO_expr:", CMO_expr.getValue())
-            print("Value of CV_expr:", CV_expr.getValue())
-            print(f"Obj: {m.ObjVal:g}")
-            # Your optimization code here, accessing variables inherited from DataProcessor
-            scenario_chosen, semaines_chosen = [], []
-            if m.status == GRB.Status.OPTIMAL:
-                # Get selected variables with value == 1
-                list_var = [v.varName for v in m.getVars() if v.x == 1]
-
-            for i in list_var:
-                scenario_chosen.append(int(i.split("_")[2]))
-                semaines_chosen.append(int(i.split("_")[3]))
-            self.semaines_chosen=semaines_chosen
-            self.scenario_chosen=scenario_chosen
-            self.m=m
-            self.choices=choices
-            list_obj=[]
-
-# Initialize a table to store chosen variable names
-    
-            chosen_variables_table = []
-# Loop for 'n' iterations
-            for _ in range(n):
-    # Optimize the model
-            
-
-    # Retrieve and store chosen variable names
-                chosen_variables = [(i, j, t) for i in range(self.num_serre) for j in self.scenarios for t in self.month_to_week_indices[self.scenario_mois_dict[j]]
-                        if self.choices[(i, j, t)].x == 1]
-                chosen_variables_table.append(chosen_variables)
-                
-    # Loop through chosen variables and add constraints to avoid repeating the same selection
-            
-                
-                m.addConstr(gp.quicksum(choices[(i, j, t)] for i, j, t in chosen_variables) <= self.num_serre-1)
-                m.update()
-                m.optimize()
-                list_obj.append(m.ObjVal)
-            self.list_obj=list_obj
-    
-# Define the start date  
-        except gp.GurobiError as e:
-            print(f"Error code {e.errno}: {e}")
-        except AttributeError:
-            print("Encountered an attribute error")
+        
+        # Store the objective value
+            list_obj.append(m.ObjVal)
+        
+    # Set the list of objective values
+        self.list_obj = list_obj

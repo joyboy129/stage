@@ -54,7 +54,7 @@ def main():
     else:
         st.error("Invalid optimization method. Please choose between 'Pulp' and 'Gurobi'.")
         return
-    n = st.sidebar.number_input("Top Scenarios (n)", min_value=1, value=10, step=1)
+    n = st.sidebar.number_input("Top Scenarios (n)", min_value=1, value=3, step=1)
 
     # Optimization Button
     optimize_button = st.sidebar.button("Optimize Portfolio")

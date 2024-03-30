@@ -359,4 +359,3 @@ class DataProcessor:
             }
         df = pd.DataFrame(data)
         return df
-
