@@ -70,11 +70,11 @@ class ExcelDataExtractor:
         sheet1 = workbook['latest inputs']
         sheet2 = workbook['Indices']
         sheet3 = workbook['Simulation']
-        df_price = self.snap_table(sheet1, 'B10', 91, 4)
+        df_price = self.snap_table(sheet1, 'B10', 91, 3)
         df_prod = self.snap_table(sheet1, 'B17', 45, 16)
         df_chargesvar = self.snap_table(sheet1, 'B38', 8, 16)
         df_plantation = self.snap_table(sheet2, 'J52', 3, 11)
-        df_month_index = self.snap_table(sheet2, 'L3', 3, 25)
+        df_month_index = self.snap_table(sheet2, 'L3', 2, 25)
         df_sim = self.snap_table(sheet3, 'B22', 3, 25)
 
           # Default folder path
@@ -90,8 +90,9 @@ class ExcelDataExtractor:
 
         print(f"DataFrames saved to folder: {self.folder_path}")
 class DataProcessor:
-    def __init__(self, folder_path):
+    def __init__(self, folder_path, premium):
         self.folder_path = folder_path
+        self.premium=premium
         self.df_price = None
         self.df_chargesvar = None
         self.df_prod = None
@@ -223,7 +224,7 @@ class DataProcessor:
             delai = row['Délai pour début de production']
             duree = row['Durée de production en semaine']
             mois = row['Mois']
-            couple=row['Couple']+" "+row["Type de plantations 23-24"]
+            couple=row['Couple']
             culture = row['Culture']
             
             scenario_delai_dict[scenario] = delai
@@ -259,7 +260,8 @@ class DataProcessor:
         price = {}
         price["Framboise"] = np.array(self.df_price.iloc[0, 1:])
         price["Mure"] = np.array(self.df_price.iloc[1, 1:])
-        price["Adelita"] = np.array(self.df_price.iloc[2, 1:])
+        multiplier = np.array([1 if price["Framboise"][i] > 0 else 0 for i in range(len(price["Framboise"]))])
+        price["Adelita"] =price["Framboise"]+multiplier*self.premium
         self.price = price
     
     def other_data(self):
@@ -288,20 +290,23 @@ class DataProcessor:
             for j in self.scenarios:
                 for t in self.month_to_week_indices[self.scenario_mois_dict[j]]:
                     if j in self.variety_scenario_dict["Adelita"]:
-                        price_array = np.array(self.price["Adelita"][t-1 + self.scenario_delai_dict[j] :])
+                        price_array = np.array(self.price["Adelita"][t -1+ self.scenario_delai_dict[j] :])
                         prod_mat_array = np.array(prod_mat[self.scenarios.index(j), :])
                         prod[(i, j, t)] = self.serre_sau_dict[i + 1] * self.padded_dot(
                             price_array.reshape(1, -1),
                             prod_mat_array.reshape(1, -1)
-                        )
+                        )[0][0]
                     else:
                         price_array = np.array(self.price[self.scenario_culture[j]][t-1 + self.scenario_delai_dict[j]:])
-                        prod_mat_array = np.array(prod_mat[self.scenarios.index(j), :])
+                        prod_mat_array = np.array(prod_mat[self.scenarios.index(j),:])
                         prod[(i, j, t)] = self.serre_sau_dict[i + 1] * self.padded_dot(
                             price_array.reshape(1, -1),
                             prod_mat_array.reshape(1, -1)
-                        )
-        
+                        )[0][0]
+        t=19
+        j=15
+        price_array = np.array(self.price[self.scenario_culture[j]][t-1 + self.scenario_delai_dict[j]:])
+        prod_mat_array = np.array(prod_mat[self.scenarios.index(j),:])
         self.prod = prod
         self.prod_mat = prod_mat
     def get_assets(self):
@@ -315,42 +320,12 @@ class DataProcessor:
         self.other_data()
         self.compute_tensor()
     def display(self):
-        start_date = datetime(2024, 1, 1)
-
-# Dictionary of French month names
-        french_months = {
-    1: 'Janvier',
-    2: 'Février',
-    3: 'Mars',
-    4: 'Avril',
-    5: 'Mai',
-    6: 'Juin',
-    7: 'Juillet',
-    8: 'Août',
-    9: 'Septembre',
-    10: 'Octobre',
-    11: 'Novembre',
-    12: 'Décembre'
-}
-
-# Function to get the month from the week index
-        def get_month_from_week_index(week_index):
-    # Calculate the date corresponding to the week index
-            target_date = start_date + timedelta(weeks=week_index - 1)
-    
-    # Get the month index from the target date
-            month_index = target_date.month
-    
-    # Get the French month name from the month index using the dictionary
-            month_name = french_months[month_index]
-    
-            return month_name
-
+        
         data_dict = self.scenario_variety_mapping.to_dict(orient='records')
         data_dict = {entry['Scénario']: entry['variété 23-24'] for entry in data_dict}
 
         data = {
-            "Secteurr": list(self.serre_secteur_dict[i] for i in range(1, self.num_serre+1)),
+            "Secteur": list(self.serre_secteur_dict[i] for i in range(1, self.num_serre+1)),
             "Serre": list(range(1, self.num_serre + 1)),
             "Sau": list(self.serre_sau_dict.values()),
             "Scenario_index": self.scenario_chosen,
@@ -369,5 +344,54 @@ class DataProcessor:
             }
         df = pd.DataFrame(data)
         return df
-    def biase_data(self):
-        pass
+    def summarize(self, dict_CA_values,dict_CMO_values,dict_CV_values,scenario_dict):
+        data = {
+                "Scenario index": list(set(self.scenario_chosen_top)),
+                "Scenario": [self.scenario_couple[i] for i in list(set(self.scenario_chosen_top))],
+                "Mois": [self.scenario_mois_dict[i] for i in list(set(self.scenario_chosen_top))],
+                "Semaines": [', '.join(map(str, list(set(scenario_dict[i])))) for i in list(set(self.scenario_chosen_top))],
+                "Hectars": [
+                    int(100*np.dot(
+                        [1 if i == self.scenario_chosen_top[value] else 0 for value in range(self.num_serre)],
+                        np.array(list(self.serre_sau_dict.values()))
+                    ))/100
+                    for i in list(set(self.scenario_chosen_top))
+                ],
+                 "Chiffre d'affaire": ["{:,.0f}".format(dict_CA_values[j]) for j in list(set(self.scenario_chosen_top))],
+             "Marge": ["{:,.0f}".format(dict_CA_values[j]-dict_CV_values[j]-dict_CMO_values[j]) for j in list(set(self.scenario_chosen_top))],
+             "Taux de marge":[int(100*(dict_CA_values[j]-dict_CV_values[j]-dict_CMO_values[j])/dict_CA_values[j])
+                            for j in list(set(self.scenario_chosen_top))]
+
+            }
+        df=pd.DataFrame(data)
+        return df
+    
+start_date = datetime(2024, 1, 1)
+
+# Dictionary of French month names
+french_months = {
+    1: 'Janvier',
+    2: 'Février',
+    3: 'Mars',
+    4: 'Avril',
+    5: 'Mai',
+    6: 'Juin',
+    7: 'Juillet',
+    8: 'Août',
+    9: 'Septembre',
+    10: 'Octobre',
+    11: 'Novembre',
+    12: 'Décembre'
+}
+def get_month_from_week_index(week_index):
+    # Calculate the date corresponding to the week index
+    target_date = start_date + timedelta(weeks=week_index - 1)
+
+# Get the month index from the target date
+    month_index = target_date.month
+
+# Get the French month name from the month index using the dictionary
+    month_name = french_months[month_index]
+
+    return month_name
+

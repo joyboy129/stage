@@ -1,16 +1,16 @@
 Scénario,Couple,Culture,variété 23-24,Type de plantations 23-24,Coûts de Main d'œuvre par kg de production,Coûts variable par hectar,Vitesse de main d'œuvre kg/personne/jour
-1,Framboise,YAZMIN-TP,YAZMIN,TP,7.33,632256.0,15
-2,Framboise,YAZMIN-TP,YAZMIN,TP,7.33,632256.0,15
-3,Framboise,YAZMIN-TP,YAZMIN,TP,7.33,632256.0,15
-4,Framboise,YAZMIN-MD+CB,YAZMIN,MD+CB,7.33,607650.0,16
-5,Framboise,YAZMIN-MD+CB,YAZMIN,MD+CB,7.33,607650.0,16
-8,Framboise,Adelita-TP,Adelita,TP,7.22,632000.0,14
-9,Framboise,Adelita-TP,Adelita,TP,7.22,632000.0,14
-10,Framboise,Adelita-TP,Adelita,TP,7.22,632000.0,14
-11,Mure,Mure-VIC-LCST,VICTORIA,Long canne ST,7.86,925440.0,20
-12,Mure,Mure-LAU-LCST,LAURITA,Long canne ST,7.86,763368.5714285714,17
-13,Mure,Mure-LAU-LCST,LAURITA,Long canne ST,7.86,763368.5714285714,17
-14,Mure,Mure-LAU-MD1,LAURITA,MD,7.86,10000000.0,14
-15,Framboise,YAZMIN-TP,YAZMIN,TP,7.33,632256.0,14
-18,Mure,Mure-CLA-LCI,Clara,Long canne interne,7.86,552465.0,14
-19,Mure,Mure-Hen-MD1,Henrienta,MD1,7.86,959868.57,14
+1,Framboise,YAZMIN-TP,YAZMIN,TP,0,786403,15
+2,Framboise,YAZMIN-TP,YAZMIN,TP,0,786403,15
+3,Framboise,YAZMIN-TP,YAZMIN,TP,0,786403,15
+4,Framboise,YAZMIN-MD+CB,YAZMIN,MD+CB,0,840000,16
+5,Framboise,YAZMIN-MD+CB,YAZMIN,MD+CB,0,840000,16
+8,Framboise,Adelita-TP,Adelita,TP,0,786403,14
+9,Framboise,Adelita-TP,Adelita,TP,0,786403,14
+10,Framboise,Adelita-TP,Adelita,TP,0,786403,14
+11,Mure,Mure-VIC-LCST,VICTORIA,Long canne ST,0,1204000,20
+12,Mure,Mure-LAU-LCST,LAURITA,Long canne ST,0,1204000,17
+13,Mure,Mure-LAU-LCST,LAURITA,Long canne ST,0,1204000,17
+14,Mure,Mure-LAU-MD1,LAURITA,MD,100,100000000,100
+15,Framboise,YAZMIN-TP,YAZMIN,TP,0,905000,14
+18,Mure,Mure-CLA-LCI,Clara,Long canne interne,0,840000,14
+19,Mure,Mure-Hen-MD1,Henrienta,MD1,0,840000,14
